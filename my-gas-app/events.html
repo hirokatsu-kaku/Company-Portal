@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
+    
+    <style>
+      body {
+        background-color: #f4f6f9;
+        color: #333;
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        padding: 20px;
+      }
+
+      /* タイムライン */
+      .timeline {
+        position: relative;
+        padding: 20px 0;
+        max-width: 900px; /* 少し広げる */
+        margin: 0 auto;
+      }
+      .timeline::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 20px;
+        width: 3px;
+        background: #dee2e6;
+      }
+      
+      .timeline-item {
+        position: relative;
+        margin-bottom: 30px;
+        padding-left: 50px;
+      }
+      
+      .timeline-dot {
+        position: absolute;
+        left: 11px;
+        top: 24px; /* カードの上端に合わせる */
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #0d6efd;
+        border: 4px solid #fff;
+        box-shadow: 0 0 0 1px #dee2e6;
+        z-index: 1;
+      }
+
+      /* ▼▼▼ カードデザイン変更 (横並びフレックス) ▼▼▼ */
+      .event-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+        border: none;
+        cursor: pointer;
+        display: flex; /* フレックスボックス化 */
+        flex-direction: row; /* 横並び */
+        min-height: 180px; /* 最低限の高さを確保 */
+      }
+      .event-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+      }
+
+      /* ▼▼▼ 左側の画像エリア (正方形の枠) ▼▼▼ */
+      .card-img-left-wrapper {
+        width: 180px;  /* 固定幅 */
+        height: 240px; /* 固定高さ (正方形) */
+        flex-shrink: 0; /* 縮小させない */
+        background-color: #f8f9fa; /* 画像がない部分の背景色 */
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-right: 1px solid #eee;
+      }
+      .card-img-left-wrapper img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain; /* ▼重要: 全体が表示されるように収める */
+        padding: 4px; /* 少し余白を入れる */
+      }
+
+      /* 右側の本文エリア */
+      .event-card .card-body {
+        flex: 1; /* 残りの幅を埋める */
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center; /* 上下中央寄せ */
+      }
+
+      /* 編集アイコン（ホバー時） */
+      .edit-overlay {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(255,255,255,0.9);
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 2;
+      }
+      .event-card:hover .edit-overlay {
+        opacity: 1;
+      }
+
+      .no-image {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #ccc;
+        flex-direction: column;
+      }
+      .no-image i { font-size: 2.5rem; }
+      .no-image span { font-size: 0.7rem; margin-top: 5px;}
+
+      /* 日付バッジ */
+      .date-badge {
+        display: inline-block;
+        background: #e9ecef;
+        color: #495057;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .date-badge i { color: #0d6efd; margin-right: 5px; }
+
+      /* メンバータグ */
+      .member-tag {
+        font-size: 0.75rem;
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        color: #6c757d;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-right: 4px;
+        margin-bottom: 4px;
+        display: inline-block;
+      }
+
+      /* FAB */
+      .fab-btn {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        font-size: 24px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .loading-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 200px;
+        flex-direction: column;
+        color: #6c757d;
+      }
+    </style>
+  </head>
+  <body>
+
+    <h2 class="text-center fw-bold mb-5">
+      <i class="bi bi-clock-history text-primary"></i> Company History
+      <div class="fs-6 text-muted fw-normal mt-1">会社イベントとカルチャーの軌跡</div>
+    </h2>
+
+    <div class="timeline" id="timelineContainer">
+      <div class="loading-container">
+        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+        <span>読み込み中...</span>
+      </div>
+    </div>
+
+    <button class="btn btn-primary fab-btn" onclick="openRegisterModal()">
+      <i class="bi bi-plus-lg"></i>
+    </button>
+
+    <div class="modal fade" id="dataModal" tabindex="-1">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title fw-bold" id="modalTitle">イベント登録</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="form">
+              <input type="hidden" id="rowNumber">
+              
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label fw-bold small text-muted">開催日</label>
+                  <input type="date" class="form-control" id="date" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label fw-bold small text-muted">イベント名</label>
+                  <input type="text" class="form-control" id="name" required>
+                </div>
+              </div>
+
+              <div class="row">
+                 <div class="col-md-6 mb-3">
+                  <label class="form-label fw-bold small text-muted">場所</label>
+                  <input type="text" class="form-control" id="location">
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label fw-bold small text-muted">参加人数</label>
+                  <input type="number" class="form-control" id="count">
+                </div>
+              </div>
+
+              <div class="mb-3 border p-3 rounded bg-light">
+                <label class="form-label fw-bold small text-muted"><i class="bi bi-image"></i> 表紙画像設定</label>
+                
+                <div class="input-group mb-2">
+                  <span class="input-group-text">URL</span>
+                  <input type="text" class="form-control" id="thumbUrl" placeholder="画像のURLを貼り付け">
+                  <button class="btn btn-outline-secondary" type="button" onclick="openLink('thumbUrl')">確認</button>
+                </div>
+
+                <div class="text-end">
+                     <a href="https://photos.google.com" target="_blank" class="btn btn-sm btn-outline-primary">
+                       <i class="bi bi-google"></i> Googleフォトを開く
+                     </a>
+                </div>
+                <div class="form-text small mt-2">
+                  ※写真は正方形の枠内に全体が収まるように表示されます。<br>
+                  ※Googleフォトの画像は、写真を拡大して<strong>「画像アドレスをコピー」</strong>したものを貼ってください。
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label class="form-label fw-bold small text-muted">アルバムURL</label>
+                  <div class="input-group">
+                    <input type="text" class="form-control" id="albumUrl" placeholder="https://photos.app.goo.gl/...">
+                    <button class="btn btn-outline-secondary" type="button" onclick="openLink('albumUrl')">開く</button>
+                  </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label class="form-label fw-bold small text-muted">関連資料URL</label>
+                  <div class="input-group">
+                    <input type="text" class="form-control" id="docUrl" placeholder="https://notion.so/...">
+                    <button class="btn btn-outline-secondary" type="button" onclick="openLink('docUrl')">開く</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label fw-bold small text-muted">参加メンバー</label>
+                <textarea class="form-control" id="members" rows="2" placeholder="カンマ区切りで入力"></textarea>
+              </div>
+
+            </form>
+          </div>
+          <div class="modal-footer bg-light">
+            <button type="button" class="btn btn-outline-danger me-auto" id="deleteBtn" style="display:none;" onclick="deleteCurrentData()">削除</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+            <button type="button" class="btn btn-primary px-4" id="saveBtn" onclick="saveData()">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      let currentDataList = [];
+
+      window.onload = function() { loadData(); };
+
+      function loadData() { 
+        const container = document.getElementById('timelineContainer');
+        if(container.innerHTML.trim() === "") {
+             container.innerHTML = `
+              <div class="loading-container">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+                <span>読み込み中...</span>
+              </div>`;
+        }
+        google.script.run.withSuccessHandler(render).getEventData(); 
+      }
+     
+      function render(data) {
+        currentDataList = data;
+        const container = document.getElementById('timelineContainer');
+        container.innerHTML = "";
+        
+        if(!data || data.length === 0) { 
+          container.innerHTML = "<div class='text-center py-5 text-muted'>履歴なし</div>"; 
+          return; 
+        }
+       
+        data.sort((a, b) => new Date(b.data[0]) - new Date(a.data[0]));
+
+        data.forEach(item => {
+          const d = item.data;
+          // d: [0:date, 1:name, 2:loc, 3:count, 4:albumUrl, 5:thumbUrl, 6:docUrl, 7:members] ※画像位置は削除
+
+          let thumbUrl = d[5];
+          
+          let imgHtml = `<div class="no-image"><i class="bi bi-image"></i><span>No Image</span></div>`;
+          
+          if (thumbUrl && thumbUrl.startsWith('http')) {
+            if (thumbUrl.includes('drive.google.com/file/d/')) {
+               const idMatch = thumbUrl.match(/\/d\/(.+?)\//);
+               if(idMatch) thumbUrl = `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w800`;
+            }
+            // ▼ object-positionの指定を削除
+            imgHtml = `<img src="${thumbUrl}" alt="${d[1]}" onerror="this.onerror=null; this.parentNode.innerHTML='<div class=\\'no-image\\'><i class=\\'bi bi-exclamation-triangle\\'></i><span>Err</span></div>';">`;
+          }
+
+          let membersHtml = '';
+          if (d[7]) {
+            d[7].toString().split(/[、,]/).forEach(m => {
+              if(m.trim()) membersHtml += `<span class="member-tag"><i class="bi bi-person-fill"></i>${m.trim()}</span>`;
+            });
+          }
+
+          let buttonsHtml = '';
+          if (d[4]) {
+            buttonsHtml += `<a href="${d[4]}" target="_blank" class="btn btn-sm btn-outline-primary me-2 mb-2" onclick="event.stopPropagation()"><i class="bi bi-images"></i> フォトアルバム</a>`;
+          }
+          if (d[6]) {
+            buttonsHtml += `<a href="${d[6]}" target="_blank" class="btn btn-sm btn-outline-dark me-2 mb-2" onclick="event.stopPropagation()"><i class="bi bi-file-earmark-text"></i> 資料/議事録</a>`;
+          }
+
+          // ▼ HTML構造を左右分割に変更
+          const html = `
+            <div class="timeline-item">
+              <div class="timeline-dot"></div>
+              <div class="card event-card" onclick="openEditModal(${item.rowNumber})">
+                
+                <div class="card-img-left-wrapper">
+                  ${imgHtml}
+                  <div class="edit-overlay"><i class="bi bi-pencil-fill text-muted small"></i></div>
+                </div>
+
+                <div class="card-body">
+                  <div><span class="date-badge"><i class="bi bi-calendar3"></i> ${d[0]}</span></div>
+                  <h5 class="card-title fw-bold mb-2">${d[1]}</h5>
+                  <div class="text-muted small mb-3">
+                    <span class="me-3"><i class="bi bi-geo-alt"></i> ${d[2] || '-'}</span>
+                    <span><i class="bi bi-people"></i> ${d[3] ? d[3]+'名' : '-'}</span>
+                  </div>
+                  <div class="mb-3">${membersHtml}</div>
+                  <div class="d-flex flex-wrap">${buttonsHtml}</div>
+                </div>
+              </div>
+            </div>
+          `;
+          container.insertAdjacentHTML('beforeend', html);
+        });
+      }
+
+      function openLink(inputId) {
+        const url = document.getElementById(inputId).value;
+        if(url && url.startsWith('http')) {
+          window.open(url, '_blank');
+        } else {
+          alert("有効なURLがありません");
+        }
+      }
+
+      function openRegisterModal() {
+        document.getElementById('modalTitle').innerText = "イベント登録";
+        document.getElementById('form').reset();
+        document.getElementById('rowNumber').value = "";
+        // 画像位置リセット処理を削除
+        document.getElementById('deleteBtn').style.display = 'none';
+        new bootstrap.Modal(document.getElementById('dataModal')).show();
+      }
+
+      function openEditModal(rowNumber) {
+        const item = currentDataList.find(i => i.rowNumber == rowNumber);
+        if (!item) return;
+        const d = item.data;
+
+        document.getElementById('modalTitle').innerText = "イベント編集";
+        document.getElementById('rowNumber').value = rowNumber;
+        document.getElementById('date').value = d[0];
+        document.getElementById('name').value = d[1];
+        document.getElementById('location').value = d[2];
+        document.getElementById('count').value = d[3];
+        document.getElementById('albumUrl').value = d[4]; 
+        document.getElementById('thumbUrl').value = d[5]; 
+        document.getElementById('docUrl').value = d[6];   
+        document.getElementById('members').value = d[7];
+        // 画像位置の読み込みを削除
+
+        document.getElementById('deleteBtn').style.display = 'block';
+        new bootstrap.Modal(document.getElementById('dataModal')).show();
+      }
+
+      function saveData() {
+        const btn = document.getElementById('saveBtn');
+        const originalText = btn.innerText;
+        btn.disabled = true; 
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 保存中...`;
+
+        const data = {
+          rowNumber: document.getElementById('rowNumber').value,
+          date: document.getElementById('date').value,
+          name: document.getElementById('name').value,
+          location: document.getElementById('location').value,
+          count: document.getElementById('count').value,
+          albumUrl: document.getElementById('albumUrl').value,
+          thumbUrl: document.getElementById('thumbUrl').value,
+          docUrl: document.getElementById('docUrl').value,
+          members: document.getElementById('members').value
+          // imgPos の送信を削除
+        };
+
+        google.script.run.withSuccessHandler(() => {
+          bootstrap.Modal.getInstance(document.getElementById('dataModal')).hide();
+          loadData();
+          btn.disabled = false; 
+          btn.innerText = originalText;
+        }).saveEvent(data);
+      }
+
+      function deleteCurrentData() {
+        const row = document.getElementById('rowNumber').value;
+        if(!row) return;
+        if(confirm("削除しますか？")) {
+           const btn = document.getElementById('deleteBtn');
+           btn.disabled = true; 
+           btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> 削除中...`;
+
+           google.script.run.withSuccessHandler(() => {
+             bootstrap.Modal.getInstance(document.getElementById('dataModal')).hide();
+             btn.disabled = false; btn.innerText = "削除";
+             loadData();
+           }).deleteEvent(row);
+        }
+      }
+    </script>
+  </body>
+</html>

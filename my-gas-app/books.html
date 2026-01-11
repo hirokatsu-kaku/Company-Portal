@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
+  <style>
+    body { background-color: #f8f9fa; color: #333; font-family: "Helvetica Neue", Arial, sans-serif; padding: 20px; }
+  
+    /* カード共通スタイル */
+    .book-card {
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: none; border-radius: 10px; overflow: hidden; background: white; height: 100%;
+      display: flex; flex-direction: column;
+      position: relative;
+      cursor: pointer;
+    }
+    .book-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+    
+    /* 画像エリア */
+    .book-cover-container {
+      height: 200px; background-color: #eee; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;
+    }
+    .book-cover-img { max-height: 100%; max-width: 100%; object-fit: contain; }
+    
+    /* 編集オーバーレイ */
+    .book-card:hover .edit-overlay { opacity: 1; }
+    .edit-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.1);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .edit-badge { background: rgba(0,0,0,0.6); color: white; padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; }
+
+    .book-type-badge { position: absolute; top: 10px; right: 10px; font-size: 0.8rem; z-index: 10; }
+    .card-body { padding: 15px; flex-grow: 1; display: flex; flex-direction: column; }
+    .book-title { font-weight: bold; font-size: 1.0rem; margin-bottom: 5px; line-height: 1.4; height: 2.8em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+    /* 星評価 */
+    .star-display-area {
+      display: inline-block; transition: transform 0.1s; padding: 2px 5px; margin-left: -5px; border-radius: 5px;
+    }
+    .star-display-area:hover { background-color: #f0f0f0; transform: scale(1.05); }
+    .star-icon { color: #ffc107; font-size: 0.95rem; }
+    .star-score { color: #6c757d; font-size: 0.8rem; margin-left: 5px; font-weight: bold;}
+    .review-count { color: #aaa; font-size: 0.8rem; margin-left: 2px; }
+
+    .action-area { margin-top: auto; border-top: 1px solid #eee; padding-top: 10px; }
+    .pdf-frame { width: 100%; height: 80vh; border: none; }
+
+    /* タブボタン */
+    .nav-pills .nav-link.active { background-color: #0d6efd; font-weight: bold; }
+    .nav-pills .nav-link { color: #555; cursor: pointer; }
+    
+    /* リクエストカード固有 */
+    .req-card { border: 2px solid #ffc107; }
+    .req-ribbon {
+       position: absolute; top: 10px; left: -2px; padding: 2px 10px; background: #ffc107; color: #000; font-size: 0.75rem; font-weight: bold;
+       box-shadow: 2px 2px 5px rgba(0,0,0,0.2); z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+      <h2 class="fw-bold mb-0"><i class="bi bi-journal-bookmark-fill text-primary"></i> Sent. Library</h2>
+      <p class="text-muted small mb-0">書籍をシェア・検索</p>
+    </div>
+    
+    <ul class="nav nav-pills bg-white rounded p-1 shadow-sm border">
+      <li class="nav-item">
+        <a class="nav-link active" id="tab-library" onclick="switchMode('library')">
+          <i class="bi bi-grid-fill"></i> 本棚
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" id="tab-wishlist" onclick="switchMode('wishlist')">
+          </i> 欲しい本
+        </a>
+      </li>
+    </ul>
+
+    <button class="btn btn-primary rounded-pill px-4" id="mainAddBtn" onclick="openRegisterModal()">
+      <i class="bi bi-plus-lg"></i> 本を追加
+    </button>
+  </div>
+
+  <div class="row mb-3">
+    <div class="col-md-6">
+      <div class="input-group shadow-sm">
+        <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+        <input type="text" class="form-control border-start-0 ps-0 border-end-0" placeholder="書籍名、キーワード..." id="searchInput" onkeyup="handleSearch()">
+        <button class="btn btn-white border-start-0 border text-secondary" id="filterBtn" type="button" onclick="openFilterModal()" title="詳細フィルタ">
+          <i class="bi bi-funnel-fill"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-5 g-3" id="bookGrid">
+    <div class="text-center w-100 py-5 text-muted">
+      <div class="spinner-border text-primary" role="status"></div>
+      <div class="mt-2">Loading...</div>
+    </div>
+  </div>
+
+
+  <div class="modal fade" id="filterModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold"><i class="bi bi-funnel"></i> 絞り込み設定</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">ステータス</label>
+            <div class="form-check"><input class="form-check-input filter-check" type="checkbox" value="貸出可" id="checkOk" checked><label class="form-check-label small" for="checkOk">貸出可</label></div>
+            <div class="form-check"><input class="form-check-input filter-check" type="checkbox" value="貸出中" id="checkOut" checked><label class="form-check-label small" for="checkOut">貸出中</label></div>
+            <div class="form-check"><input class="form-check-input filter-check" type="checkbox" value="電子書籍" id="checkEbook" checked><label class="form-check-label small" for="checkEbook">電子書籍</label></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">種類</label>
+            <div class="form-check"><input class="form-check-input filter-check" type="checkbox" value="書籍(紙)" id="typePaper" checked><label class="form-check-label small" for="typePaper">書籍(紙)</label></div>
+            <div class="form-check"><input class="form-check-input filter-check" type="checkbox" value="PDF/電子" id="typeDigital" checked><label class="form-check-label small" for="typeDigital">PDF/電子</label></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">最低評価</label>
+            <select class="form-select form-select-sm" id="filterRating">
+              <option value="0">指定なし</option>
+              <option value="4">★4以上</option>
+              <option value="3">★3以上</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="resetFilters()">リセット</button>
+          <button type="button" class="btn btn-primary btn-sm w-100" onclick="applyFilters()">適用</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="dataModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-light">
+          <h5 class="modal-title fw-bold" id="modalTitle">図書登録</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="form">
+            <input type="hidden" id="rowNumber">
+            <input type="hidden" id="imageUrl">
+            <input type="hidden" id="existingReviews">
+            <input type="hidden" id="existingLikes">
+            <input type="hidden" id="sourceRequestRow">
+
+            <div class="alert alert-primary d-flex align-items-center p-3" role="alert">
+              <i class="bi bi-google me-2 fs-4"></i>
+              <div class="flex-grow-1">
+                <div class="small fw-bold mb-1">Google Booksから自動入力</div>
+                <div class="input-group">
+                  <input type="text" class="form-control form-control-sm" id="isbnInput" placeholder="ISBN (例: 9784...)">
+                  <button class="btn btn-primary btn-sm" type="button" id="isbnBtn" onclick="searchGoogleBooks('isbnInput', 'title', 'imageUrl', 'previewImage', 'noImageText')">
+                    検索・反映
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-4 text-center mb-3">
+                <div class="border rounded p-2 d-flex align-items-center justify-content-center bg-white" style="height: 220px;">
+                  <img id="previewImage" src="" style="max-height: 100%; max-width: 100%; display: none;">
+                  <div id="noImageText" class="text-muted small">
+                    <i class="bi bi-image fs-1 d-block text-secondary"></i> No Image
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-8">
+                <div class="mb-3">
+                  <label class="form-label small fw-bold">書籍名 <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" id="title" required>
+                </div>
+                <div class="row g-2 mb-3">
+                  <div class="col-6">
+                    <label class="form-label small fw-bold">種類</label>
+                    <select class="form-select" id="type">
+                      <option value="書籍(紙)">書籍(紙)</option>
+                      <option value="PDF/電子">PDF/電子</option>
+                    </select>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label small fw-bold">登録者/購入者</label>
+                    <input type="text" class="form-control" id="registrant">
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label small fw-bold">保管場所 / URL</label>
+                  <input type="text" class="form-control" id="location" placeholder="棚番号 または DriveのURL">
+                </div>
+                <div class="p-3 bg-light rounded border">
+                  <div class="mb-2">
+                    <label class="form-label small fw-bold">ステータス</label>
+                    <select class="form-select" id="status" onchange="toggleStatusInput()">
+                      <option value="貸出可">貸出可</option>
+                      <option value="貸出中">貸出中</option>
+                      <option value="電子書籍">電子書籍</option>
+                    </select>
+                  </div>
+                  <div class="mb-0" id="borrowerArea" style="display: none;">
+                    <label class="form-label small fw-bold text-danger">貸出者名</label>
+                    <input type="text" class="form-control" id="borrowerName">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer d-flex justify-content-between">
+          <button type="button" class="btn btn-outline-danger" id="deleteBtn" onclick="executeDelete()" style="display: none;">
+            <i class="bi bi-trash"></i> 削除
+          </button>
+          
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">キャンセル</button>
+            <button type="button" class="btn btn-primary px-4" id="saveBtn" onclick="saveData()">
+              <i class="bi bi-save"></i> 保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="requestModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-warning bg-opacity-10">
+          <h5 class="modal-title fw-bold text-dark" id="reqModalTitle"><i class="bi bi-cart-plus-fill"></i> 欲しい本をリクエスト</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="reqForm">
+            <input type="hidden" id="reqRowNumber">
+            <input type="hidden" id="reqImageUrl">
+            <input type="hidden" id="reqIsbn">
+
+            <div class="alert alert-warning d-flex align-items-center p-2 mb-3" role="alert">
+              <div class="w-100">
+                <div class="small fw-bold mb-1">Google Books検索</div>
+                <div class="input-group input-group-sm">
+                  <input type="text" class="form-control" id="reqIsbnInput" placeholder="ISBN (例: 9784...)">
+                  <button class="btn btn-warning border" type="button" id="reqIsbnBtn" onclick="searchGoogleBooks('reqIsbnInput', 'reqTitle', 'reqImageUrl', 'reqPreviewImage', 'reqNoImageText')">
+                    検索
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div class="text-center mb-3">
+               <img id="reqPreviewImage" src="" style="height:120px; display:none;" class="border rounded">
+               <div id="reqNoImageText" class="text-muted small" style="display:none;"></div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-bold">書籍名 <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="reqTitle" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">購入サイトURL</label>
+              <input type="url" class="form-control" id="reqUrl" placeholder="https://...">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">推薦理由</label>
+              <textarea class="form-control" id="reqReason" rows="2"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">申請者名</label>
+              <input type="text" class="form-control" id="reqRequester" value="">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer d-flex justify-content-between">
+           <button type="button" class="btn btn-outline-danger" id="reqDeleteBtn" onclick="deleteRequest()" style="display: none;">
+            <i class="bi bi-trash"></i> 取り下げ
+          </button>
+          <div class="d-flex gap-2 ms-auto">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">キャンセル</button>
+            <button type="button" class="btn btn-warning px-4 text-dark fw-bold" id="reqSaveBtn" onclick="saveRequest()">
+              リクエスト送信
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="pdfModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content h-100"><div class="modal-header py-2 bg-dark text-white"><h6 class="modal-title" id="pdfTitle">Preview</h6><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><iframe id="pdfFrame" class="pdf-frame" src=""></iframe></div></div></div></div>
+  <div class="modal fade" id="reviewModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fw-bold">レビュー</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="reviewRowNumber"><div class="mb-4"><h6 class="small text-muted fw-bold border-bottom pb-2">コメント</h6><div id="reviewList" class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;"></div></div><h6 class="small text-muted fw-bold">投稿</h6><div class="mb-2"><select class="form-select form-select-sm" id="reviewRating"><option value="★★★★★">★★★★★</option><option value="★★★★☆">★★★★☆</option><option value="★★★☆☆">★★★☆☆</option><option value="★★☆☆☆">★★☆☆☆</option><option value="★☆☆☆☆">★☆☆☆☆</option></select></div><div class="mb-2"><input type="text" class="form-control form-control-sm" id="reviewComment" placeholder="コメント"></div><div class="mb-3"><input type="text" class="form-control form-control-sm" id="reviewName" value=""></div><div class="d-grid"><button type="button" class="btn btn-primary btn-sm" id="postReviewBtn" onclick="postReview()">投稿</button></div></div></div></div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let currentMode = 'library';
+    let allBooks = [];
+    let allRequests = [];
+    let loadTimeout = null; // 読み込みタイムアウト用
+    const DEFAULT_COVER = "https://via.placeholder.com/128x190.png?text=No+Cover";
+
+    window.onload = function() { loadData(); };
+
+    function switchMode(mode) {
+      currentMode = mode;
+      document.getElementById('tab-library').classList.toggle('active', mode === 'library');
+      document.getElementById('tab-wishlist').classList.toggle('active', mode === 'wishlist');
+      document.getElementById('filterBtn').style.display = (mode === 'library') ? 'block' : 'none';
+      
+      const addBtn = document.getElementById('mainAddBtn');
+      if (mode === 'library') {
+        addBtn.innerHTML = '<i class="bi bi-plus-lg"></i> 本を追加';
+        addBtn.onclick = openRegisterModal;
+        addBtn.className = "btn btn-primary rounded-pill px-4";
+      } else {
+        addBtn.innerHTML = '<i class="bi bi-cart-plus"></i> リクエスト';
+        addBtn.onclick = openRequestModal;
+        addBtn.className = "btn btn-warning rounded-pill px-4 fw-bold";
+      }
+      loadData();
+    }
+
+    function showLoading(btnId, msg = "処理中...") {
+      const btn = document.getElementById(btnId);
+      if(!btn) return;
+      btn.dataset.originalText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ${msg}`;
+    }
+    function hideLoading(btnId) {
+      const btn = document.getElementById(btnId);
+      if(!btn) return;
+      btn.disabled = false;
+      btn.innerHTML = btn.dataset.originalText || "ボタン";
+    }
+
+    // タイムアウト付きロード関数（無限ロード対策）
+    function loadData() {
+      const grid = document.getElementById('bookGrid');
+      const msg = (currentMode === 'library') ? '本棚を整理中...' : 'リクエスト確認中...';
+      grid.innerHTML = `<div class="col-12 text-center py-5 text-muted"><div class="spinner-border text-primary" role="status" style="width:3rem;height:3rem;"></div><div class="mt-3 fw-bold">${msg}</div></div>`;
+
+      // 15秒でタイムアウトさせる
+      if(loadTimeout) clearTimeout(loadTimeout);
+      loadTimeout = setTimeout(() => {
+        onFailure(new Error("応答がありません。時間をおいて再読み込みしてください。"));
+      }, 15000);
+
+      if (currentMode === 'library') {
+        google.script.run.withSuccessHandler(renderBooks).withFailureHandler(onFailure).getBookData();
+      } else {
+        google.script.run.withSuccessHandler(renderRequests).withFailureHandler(onFailure).getRequestData();
+      }
+    }
+
+    function onFailure(error) {
+      if(loadTimeout) clearTimeout(loadTimeout);
+      document.getElementById('bookGrid').innerHTML = `<div class="col-12 text-center py-5"><div class="alert alert-danger d-inline-block">読み込みエラー<br><small>${error.message}</small></div><div class="mt-3"><button class="btn btn-outline-primary" onclick="loadData()">再読み込み</button></div></div>`;
+    }
+
+    function handleSearch() {
+      if (currentMode === 'library') filterBooks();
+      else renderRequests(allRequests);
+    }
+
+    // --- Render Functions (Library & Wishlist) ---
+    function renderBooks(data) {
+      if(loadTimeout) clearTimeout(loadTimeout); // 成功したらタイマー解除
+      allBooks = data;
+      filterBooks();
+    }
+    function filterBooks() {
+      const grid = document.getElementById('bookGrid');
+      grid.innerHTML = "";
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      
+      const checkOk = document.getElementById('checkOk').checked;
+      const checkOut = document.getElementById('checkOut').checked;
+      const checkEbook = document.getElementById('checkEbook').checked;
+      const typePaper = document.getElementById('typePaper').checked;
+      const typeDigital = document.getElementById('typeDigital').checked;
+      const minRating = parseInt(document.getElementById('filterRating').value);
+
+      if(!allBooks || allBooks.length === 0) { grid.innerHTML = "<div class='text-center w-100 py-5 text-muted'>本がありません。</div>"; return; }
+
+      let count = 0;
+      allBooks.forEach(item => {
+        try {
+          const d = item.data;
+          const title = d[0]||"無題";
+          const type = d[1]||"書籍";
+          const location = d[2]||"";
+          const rawStatus = d[3]||"貸出可";
+          const imgUrl = (d[4] && d[4].startsWith('http')) ? d[4] : DEFAULT_COVER;
+          const reviewsStr = d[6]||"";
+
+          if (!title.toLowerCase().includes(query)) return;
+          
+          let statusMatch = false;
+          if (rawStatus === '貸出可' && checkOk) statusMatch = true;
+          else if (rawStatus.includes('貸出中') && checkOut) statusMatch = true;
+          else if (rawStatus === '電子書籍' && checkEbook) statusMatch = true;
+          if (!statusMatch) return;
+          
+          let typeMatch = false;
+          if (type.includes('書籍') && typePaper) typeMatch = true;
+          if ((type.includes('PDF') || type.includes('電子')) && typeDigital) typeMatch = true;
+          if (!typeMatch) return;
+
+          // ▼▼▼ 修正ここから: 星評価の計算ロジックを変更 ▼▼▼
+          let avgRating = 0, reviewCount = 0;
+          if(reviewsStr) {
+            // [★★★★☆] のようなパターン(白星含む)もマッチさせる
+            const matches = reviewsStr.match(/\[[★☆]+\]/g);
+            if(matches) {
+              matches.forEach(m => {
+                // 文字列の中から黒星(★)の数だけをカウントする
+                const score = (m.match(/★/g) || []).length;
+                avgRating += score;
+              });
+              reviewCount = matches.length;
+              avgRating /= reviewCount; // 合計スコア ÷ レビュー数 で平均を算出
+            }
+          }
+          // ▲▲▲ 修正ここまで ▲▲▲
+
+          if (minRating > 0 && avgRating < minRating) return;
+
+          count++;
+          
+          let isBorrowed = rawStatus.includes('貸出中');
+          let isEbook = rawStatus === '電子書籍';
+          let badgeHtml = isEbook ? `<span class="badge bg-secondary">電子</span>` : (isBorrowed ? `<span class="badge bg-warning text-dark text-truncate" style="max-width:100%">${rawStatus}</span>` : `<span class="badge bg-success bg-opacity-75">貸出可</span>`);
+          
+          let starHtml = "";
+          const starClick = `onclick="event.stopPropagation(); openReviews('${item.rowNumber}')"`;
+          if (reviewCount > 0) {
+            let stars = ""; for(let i=0;i<5;i++) stars += (i<Math.round(avgRating))?'<i class="bi bi-star-fill star-icon"></i>':'<i class="bi bi-star star-icon" style="color:#ddd"></i>';
+            starHtml = `<div class="star-display-area" title="レビュー" ${starClick}>${stars} <span class="star-score">${avgRating.toFixed(1)}</span><span class="review-count">(${reviewCount})</span></div>`;
+          } else {
+            starHtml = `<div class="star-display-area text-muted" title="評価なし" ${starClick}><i class="bi bi-star star-icon" style="color:#ddd"></i><i class="bi bi-star star-icon" style="color:#ddd"></i><i class="bi bi-star star-icon" style="color:#ddd"></i><i class="bi bi-star star-icon" style="color:#ddd"></i><i class="bi bi-star star-icon" style="color:#ddd"></i><span class="review-count small ms-1">評価なし</span></div>`;
+          }
+
+          let actionBtn = "";
+          const btnId = `btn-${item.rowNumber}`;
+          const stop = `event.stopPropagation();`;
+          if (isEbook) {
+             if (location && location.startsWith('http')) actionBtn = `<button class="btn btn-sm btn-outline-primary w-100" onclick="${stop} openPdfPreview('${title}', '${location}')"><i class="bi bi-eye"></i> 読む</button>`;
+             else actionBtn = `<button class="btn btn-sm btn-secondary w-100" disabled>貸出不要</button>`;
+          } else if (type.includes('PDF') || type.includes('電子')) {
+             actionBtn = `<button class="btn btn-sm btn-outline-primary w-100" onclick="${stop} openPdfPreview('${title}', '${location}')">読む</button>`;
+          } else {
+             if (isBorrowed) actionBtn = `<button id="${btnId}" class="btn btn-sm btn-outline-secondary w-100" onclick="${stop} returnBook('${item.rowNumber}', '${title}', '${btnId}')">返却</button>`;
+             else actionBtn = `<button id="${btnId}" class="btn btn-sm btn-outline-success w-100" onclick="${stop} borrowBook('${item.rowNumber}', '${title}', '${btnId}')">借りる</button>`;
+          }
+
+          const html = `
+            <div class="col">
+              <div class="card book-card" onclick="editBook(${item.rowNumber})">
+                <div class="book-cover-container">
+                  <span class="book-type-badge badge bg-light text-dark border shadow-sm">${type}</span>
+                  <img src="${imgUrl}" class="book-cover-img" loading="lazy">
+                  <div class="edit-overlay"><span class="edit-badge"><i class="bi bi-pencil-fill"></i> 編集</span></div>
+                </div>
+                <div class="card-body">
+                  <div class="book-title" title="${title}">${title}</div>
+                  <div class="mb-1">${badgeHtml}</div>
+                  <div class="mb-2">${starHtml}</div>
+                  <div class="action-area d-flex gap-1"><div class="flex-grow-1">${actionBtn}</div></div>
+                </div>
+              </div>
+            </div>`;
+          grid.innerHTML += html;
+        } catch(e) {}
+      });
+      if (count === 0) grid.innerHTML = "<div class='text-center w-100 py-5 text-muted'>条件に一致する本がありません。</div>";
+    }
+
+    
+    function renderRequests(data) {
+      if(loadTimeout) clearTimeout(loadTimeout);
+      allRequests = data;
+      const grid = document.getElementById('bookGrid');
+      grid.innerHTML = "";
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      
+      if(!data || data.length === 0) { grid.innerHTML = "<div class='text-center w-100 py-5 text-muted'>リクエストはありません。</div>"; return; }
+
+      let count = 0;
+      data.forEach(item => {
+        const d = item.data;
+        const title = d[0]||"名称未設定";
+        const url = d[1]||"";
+        const requester = d[2]||"匿名";
+        const likes = d[3]||0;
+        const reason = d[5]||"";
+        const imgUrl = (d[6] && d[6].startsWith('http')) ? d[6] : DEFAULT_COVER;
+       
+        if (!title.toLowerCase().includes(query)) return;
+        count++;
+
+        const btnId = `like-btn-${item.rowNumber}`;
+        const stop = "event.stopPropagation();";
+       
+        // ▼▼▼ 修正箇所: 鉛筆ボタンを削除し、購入ボタンを幅一杯(w-100)に調整 ▼▼▼
+        const html = `
+          <div class="col">
+            <div class="card book-card req-card" onclick="editRequest(${item.rowNumber})">
+              <div class="req-ribbon">申請中</div>
+              <div class="book-cover-container">
+                <img src="${imgUrl}" class="book-cover-img" loading="lazy">
+                <div class="edit-overlay"><span class="edit-badge"><i class="bi bi-pencil-fill"></i> 編集</span></div>
+              </div>
+              <div class="card-body">
+                <div class="book-title" title="${title}">${title}</div>
+                <div class="small text-muted mb-1"><i class="bi bi-person"></i> ${requester}</div>
+                <div class="mb-2 flex-grow-1" style="font-size:0.8rem; line-height:1.2; color:#666;">${reason || '理由なし'}</div>
+               
+                <div class="action-area d-grid gap-2">
+                  <div class="d-flex gap-1">
+                     <button class="btn btn-sm btn-primary w-100" onclick="${stop} purchaseBook('${item.rowNumber}')">
+                      <i class="bi bi-cart-check"></i> 購入
+                    </button>
+                  </div>
+                  <div class="d-flex gap-1">
+                    ${url ? `<a href="${url}" target="_blank" class="btn btn-sm btn-outline-secondary w-50" title="購入サイト" onclick="${stop}"><i class="bi bi-link-45deg"></i></a>` : ''}
+                    <button id="${btnId}" class="btn btn-sm btn-outline-danger ${url?'w-50':'w-100'}" onclick="${stop} addLike(${item.rowNumber}, '${btnId}')">
+                      <i class="bi bi-heart-fill"></i> ${likes}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>`;
+        grid.innerHTML += html;
+      });
+      if (count === 0) grid.innerHTML = "<div class='text-center w-100 py-5 text-muted'>条件に一致するリクエストがありません。</div>";
+    }
+
+    function searchGoogleBooks(inputId, titleId, imgUrlId, previewImgId, noImgTextId) {
+      const isbnVal = document.getElementById(inputId).value.replace(/[- ]/g, '');
+      if(!isbnVal) return alert("ISBNを入力してください。");
+      const btn = document.activeElement; const originalText = btn.innerText;
+      btn.disabled = true; btn.innerText = "...";
+      fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbnVal}`)
+        .then(res => res.json()).then(data => {
+          if(data.totalItems > 0) {
+            const book = data.items[0].volumeInfo;
+            document.getElementById(titleId).value = book.title;
+            if(book.imageLinks) {
+              const img = book.imageLinks.thumbnail || book.imageLinks.smallThumbnail;
+              const secureImg = img.replace(/^http:\/\//i, 'https://');
+              document.getElementById(imgUrlId).value = secureImg;
+              const prev = document.getElementById(previewImgId);
+              prev.src = secureImg; prev.style.display = 'block';
+              if(document.getElementById(noImgTextId)) document.getElementById(noImgTextId).style.display = 'none';
+              if(inputId === 'reqIsbnInput') document.getElementById('reqIsbn').value = isbnVal;
+            }
+          } else alert("該当なし");
+        }).catch(e => alert(e.message)).finally(() => { btn.disabled=false; btn.innerText = originalText; });
+    }
+
+    // --- Modal & Actions ---
+
+    function openRegisterModal() {
+      document.getElementById('form').reset();
+      document.getElementById('modalTitle').innerText = "図書登録";
+      document.getElementById('rowNumber').value = "";
+      document.getElementById('imageUrl').value = "";
+      document.getElementById('sourceRequestRow').value = "";
+      document.getElementById('deleteBtn').style.display = 'none';
+      toggleStatusInput();
+      document.getElementById('previewImage').style.display = "none";
+      document.getElementById('noImageText').style.display = "block";
+      new bootstrap.Modal(document.getElementById('dataModal')).show();
+    }
+   
+    function purchaseBook(reqRow) {
+      const item = allRequests.find(r => r.rowNumber == reqRow);
+      if(!item) return;
+      const d = item.data;
+     
+      document.getElementById('form').reset();
+      document.getElementById('modalTitle').innerText = "図書として登録";
+      document.getElementById('rowNumber').value = "";
+      document.getElementById('sourceRequestRow').value = reqRow;
+      document.getElementById('deleteBtn').style.display = 'none';
+
+      document.getElementById('title').value = d[0];
+      document.getElementById('registrant').value = d[2];
+      const img = (d[6] && d[6].startsWith('http')) ? d[6] : "";
+      document.getElementById('imageUrl').value = img;
+      document.getElementById('isbnInput').value = d[7] || "";
+     
+      if(img) {
+        document.getElementById('previewImage').src = img;
+        document.getElementById('previewImage').style.display = 'block';
+        document.getElementById('noImageText').style.display = 'none';
+      } else {
+        document.getElementById('previewImage').style.display = 'none';
+        document.getElementById('noImageText').style.display = 'block';
+      }
+      toggleStatusInput();
+      new bootstrap.Modal(document.getElementById('dataModal')).show();
+    }
+
+    function editBook(rowNum) {
+      if (currentMode !== 'library') return;
+      const item = allBooks.find(b => b.rowNumber == rowNum);
+      const d = item.data;
+     
+      document.getElementById('modalTitle').innerText = "編集";
+      document.getElementById('rowNumber').value = rowNum;
+      document.getElementById('sourceRequestRow').value = "";
+      document.getElementById('deleteBtn').style.display = 'block';
+
+      document.getElementById('title').value = d[0];
+      document.getElementById('type').value = d[1];
+      document.getElementById('location').value = d[2];
+      let rawStatus = d[3] || '貸出可', statusVal = '貸出可', borrowerVal = '';
+      if(rawStatus.startsWith('貸出中')) { statusVal = '貸出中'; if(rawStatus.includes(':')) borrowerVal = rawStatus.split(':')[1].trim(); }
+      else if (rawStatus === '電子書籍') statusVal = '電子書籍';
+      document.getElementById('status').value = statusVal;
+      document.getElementById('borrowerName').value = borrowerVal;
+      toggleStatusInput();
+
+      document.getElementById('imageUrl').value = d[4];
+      document.getElementById('isbnInput').value = d[5]||"";
+      document.getElementById('existingReviews').value = d[6]||"";
+      document.getElementById('existingLikes').value = d[7]||"";
+      document.getElementById('registrant').value = d[8]||"";
+     
+      if(d[4] && d[4].startsWith('http')) {
+         document.getElementById('previewImage').src = d[4];
+         document.getElementById('previewImage').style.display = 'block';
+         document.getElementById('noImageText').style.display = 'none';
+      } else {
+         document.getElementById('previewImage').style.display = 'none';
+         document.getElementById('noImageText').style.display = 'block';
+      }
+      new bootstrap.Modal(document.getElementById('dataModal')).show();
+    }
+
+    function saveData() {
+      showLoading('saveBtn', '保存中...');
+      const statusSelect = document.getElementById('status').value;
+      let finalStatus = statusSelect;
+      if (statusSelect === '貸出中') {
+        const name = document.getElementById('borrowerName').value;
+        finalStatus = name ? `貸出中: ${name}` : `貸出中: (不明)`;
+      }
+      const data = {
+        rowNumber: document.getElementById('rowNumber').value,
+        title: document.getElementById('title').value,
+        type: document.getElementById('type').value,
+        location: document.getElementById('location').value,
+        status: finalStatus,
+        imageUrl: document.getElementById('imageUrl').value,
+        isbn: document.getElementById('isbnInput').value,
+        reviews: document.getElementById('existingReviews').value,
+        likes: document.getElementById('existingLikes').value,
+        registrant: document.getElementById('registrant').value
+      };
+      const sourceRequestRow = document.getElementById('sourceRequestRow').value;
+     
+      if (sourceRequestRow) {
+        google.script.run.withSuccessHandler(() => {
+          bootstrap.Modal.getInstance(document.getElementById('dataModal')).hide();
+          switchMode('library'); hideLoading('saveBtn');
+          alert("リクエストを図書として登録しました！");
+        }).withFailureHandler((e) => { alert("移行エラー: "+e.message); hideLoading('saveBtn'); })
+        .promoteRequestToBook(sourceRequestRow, data);
+      } else {
+        google.script.run.withSuccessHandler(() => {
+          bootstrap.Modal.getInstance(document.getElementById('dataModal')).hide();
+          loadData(); hideLoading('saveBtn');
+        }).withFailureHandler((e) => { alert("保存エラー: "+e.message); hideLoading('saveBtn'); })
+        .saveBook(data);
+      }
+    }
+
+    function executeDelete() {
+      const row = document.getElementById('rowNumber').value;
+      if(!row) return;
+      if(!confirm("本当に削除しますか？\nこの操作は元に戻せません。")) return;
+      showLoading('deleteBtn', '削除中...');
+      document.getElementById('saveBtn').disabled = true;
+      google.script.run.withSuccessHandler(() => {
+        bootstrap.Modal.getInstance(document.getElementById('dataModal')).hide();
+        loadData(); hideLoading('deleteBtn'); document.getElementById('saveBtn').disabled = false;
+      }).withFailureHandler((e) => { alert("削除エラー: " + e.message); hideLoading('deleteBtn'); document.getElementById('saveBtn').disabled = false; }).deleteBook(row);
+    }
+
+    // --- Request Actions ---
+    function openRequestModal() {
+      document.getElementById('reqForm').reset();
+      document.getElementById('reqRowNumber').value = ""; // 新規なので空
+      document.getElementById('reqModalTitle').innerText = "欲しい本をリクエスト";
+      document.getElementById('reqDeleteBtn').style.display = 'none'; // 新規時は削除不可
+      document.getElementById('reqPreviewImage').style.display = "none";
+      document.getElementById('reqSaveBtn').innerText = "リクエスト送信";
+      new bootstrap.Modal(document.getElementById('requestModal')).show();
+    }
+    
+    // ★追加: リクエスト編集用
+    function editRequest(rowNum) {
+      const item = allRequests.find(r => r.rowNumber == rowNum);
+      if(!item) return;
+      const d = item.data;
+      
+      document.getElementById('reqModalTitle').innerText = "リクエストの編集";
+      document.getElementById('reqRowNumber').value = rowNum;
+      document.getElementById('reqDeleteBtn').style.display = 'block'; // 編集時は削除可
+      document.getElementById('reqSaveBtn').innerText = "更新する";
+      
+      document.getElementById('reqTitle').value = d[0] || "";
+      document.getElementById('reqUrl').value = d[1] || "";
+      document.getElementById('reqRequester').value = d[2] || "";
+      document.getElementById('reqReason').value = d[5] || "";
+      
+      const img = d[6];
+      document.getElementById('reqImageUrl').value = img || "";
+      if(img) {
+         document.getElementById('reqPreviewImage').src = img;
+         document.getElementById('reqPreviewImage').style.display = 'block';
+         document.getElementById('reqNoImageText').style.display = 'none';
+      } else {
+         document.getElementById('reqPreviewImage').style.display = 'none';
+         document.getElementById('reqNoImageText').style.display = 'block';
+      }
+      
+      document.getElementById('reqIsbn').value = d[7] || "";
+      
+      new bootstrap.Modal(document.getElementById('requestModal')).show();
+    }
+
+    function saveRequest() {
+      const title = document.getElementById('reqTitle').value;
+      if(!title) return alert("書籍名は必須です");
+      showLoading('reqSaveBtn', '送信中...');
+      const data = {
+        rowNumber: document.getElementById('reqRowNumber').value, // 編集時は値が入る
+        title: title,
+        url: document.getElementById('reqUrl').value,
+        reason: document.getElementById('reqReason').value,
+        requester: document.getElementById('reqRequester').value,
+        imageUrl: document.getElementById('reqImageUrl').value,
+        isbn: document.getElementById('reqIsbn').value
+      };
+      google.script.run.withSuccessHandler(() => {
+        bootstrap.Modal.getInstance(document.getElementById('requestModal')).hide();
+        loadData(); hideLoading('reqSaveBtn');
+      }).withFailureHandler((e) => { alert("エラー: "+e.message); hideLoading('reqSaveBtn'); }).saveRequest(data);
+    }
+    
+    // ★追加: リクエスト削除
+    function deleteRequest() {
+       const row = document.getElementById('reqRowNumber').value;
+       if(!row) return;
+       if(!confirm("このリクエストを取り下げ（削除）しますか？")) return;
+       
+       showLoading('reqDeleteBtn', '削除中...');
+       google.script.run.withSuccessHandler(() => {
+         bootstrap.Modal.getInstance(document.getElementById('requestModal')).hide();
+         loadData();
+         hideLoading('reqDeleteBtn');
+       }).withFailureHandler((e) => {
+         alert("エラー: " + e.message);
+         hideLoading('reqDeleteBtn');
+       }).deleteRequest(row);
+    }
+   
+    function addLike(row, btnId) {
+      showLoading(btnId, '');
+      google.script.run.withSuccessHandler(() => loadData()).withFailureHandler((e) => { alert(e.message); hideLoading(btnId); }).addLikeToRequest(row);
+    }
+    function toggleStatusInput() {
+      const status = document.getElementById('status').value;
+      document.getElementById('borrowerArea').style.display = (status === '貸出中') ? 'block' : 'none';
+    }
+    function openFilterModal() { new bootstrap.Modal(document.getElementById('filterModal')).show(); }
+    function applyFilters() { filterBooks(); bootstrap.Modal.getInstance(document.getElementById('filterModal')).hide(); }
+    function resetFilters() { document.getElementById('checkOk').checked=true; document.getElementById('checkOut').checked=true; document.getElementById('checkEbook').checked=true; document.getElementById('typePaper').checked=true; document.getElementById('typeDigital').checked=true; document.getElementById('filterRating').value="0"; applyFilters(); }
+   
+    function openReviews(rowNum) {
+      const item = allBooks.find(b => b.rowNumber == rowNum);
+      if(!item) return;
+      
+      document.getElementById('reviewRowNumber').value = rowNum;
+      const reviewsStr = item.data[6] || "";
+      const list = document.getElementById('reviewList'); 
+      list.innerHTML = "";
+      
+      // 空行を除外して配列化
+      const lines = reviewsStr.split('\n').filter(line => line.trim() !== "");
+
+      if(lines.length === 0) {
+        list.innerHTML = `<div class="text-center text-muted small py-3">レビューなし</div>`;
+      } else {
+        // index を使ってどの行か特定できるようにする
+        lines.forEach((line, index) => {
+          const div = document.createElement('div');
+          div.className = "bg-white border rounded p-2 mb-2 small shadow-sm d-flex justify-content-between align-items-start";
+          
+          // 左側：レビュー本文
+          const textSpan = document.createElement('span');
+          textSpan.innerText = line;
+          
+          // 右側：削除ボタン
+          const delBtn = document.createElement('button');
+          delBtn.className = "btn btn-link text-danger p-0 ms-2";
+          delBtn.style.textDecoration = "none";
+          delBtn.innerHTML = '<i class="bi bi-x-circle"></i>';
+          delBtn.title = "このレビューを削除";
+          delBtn.onclick = function() { deleteReviewAction(rowNum, index); }; // 削除関数呼び出し
+          
+          div.appendChild(textSpan);
+          div.appendChild(delBtn);
+          list.appendChild(div);
+        });
+      }
+      new bootstrap.Modal(document.getElementById('reviewModal')).show();
+    }
+
+    // ▼▼▼ 追加: 削除実行関数 ▼▼▼
+    function deleteReviewAction(rowNum, index) {
+      if(!confirm("このレビューを削除しますか？")) return;
+      
+      // ボタンを無効化するなどの処理は省略（リロードされるため）
+      google.script.run
+        .withSuccessHandler(() => {
+           // 成功したら一旦モーダルを閉じてデータを再読み込み
+           bootstrap.Modal.getInstance(document.getElementById('reviewModal')).hide();
+           loadData(); 
+        })
+        .withFailureHandler((e) => { alert("削除エラー: " + e.message); })
+        .deleteBookReview(rowNum, index);
+    }
+    function postReview() {
+      const row = document.getElementById('reviewRowNumber').value;
+      const rating = document.getElementById('reviewRating').value;
+      const comment = document.getElementById('reviewComment').value;
+      const name = document.getElementById('reviewName').value;
+      if(!comment) return alert("コメント必須");
+      showLoading('postReviewBtn', '投稿...');
+      google.script.run.withSuccessHandler(() => { bootstrap.Modal.getInstance(document.getElementById('reviewModal')).hide(); loadData(); hideLoading('postReviewBtn'); }).withFailureHandler((e) => { alert(e.message); hideLoading('postReviewBtn'); }).addBookReview(row, rating, comment, name);
+    }
+    function borrowBook(row, title, btnId) {
+      const name = prompt(`『${title}』を借ります。\n名前:`, "");
+      if(name) { showLoading(btnId, '送信...'); google.script.run.withSuccessHandler(res => { if(res==='SUCCESS') loadData(); else { alert(res); hideLoading(btnId); } }).borrowBookAction(row, title, name); }
+    }
+    function returnBook(row, title, btnId) {
+      if(confirm(`『${title}』を返却しますか？`)) { showLoading(btnId, '送信...'); google.script.run.withSuccessHandler(() => loadData()).returnBookAction(row, title, "不明"); }
+    }
+    function openPdfPreview(title, url) {
+      let previewUrl = url;
+      if(url.includes('drive.google.com') && url.includes('/view')) previewUrl = url.replace('/view', '/preview');
+      document.getElementById('pdfTitle').innerText = title;
+      document.getElementById('pdfFrame').src = previewUrl;
+      new bootstrap.Modal(document.getElementById('pdfModal')).show();
+    }
+  </script>
+</body>
+</html>
